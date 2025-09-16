@@ -1,0 +1,12 @@
+venv*
+venv310*
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+.git
+.gitignore
+.env
+/media
+/static
