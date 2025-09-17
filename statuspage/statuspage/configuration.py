@@ -1,3 +1,9 @@
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 #
 # Required Settings
 #
@@ -6,58 +12,46 @@
 # write access to the server via any other hostnames. The first FQDN in the list will be treated as the preferred name.
 #
 # Example: ALLOWED_HOSTS = ['status-page.example.com', 'status-page.internal.local']
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost').split(',')
 
 # PostgreSQL database configuration. See the Django documentation for a complete list of available parameters:
 #   https://docs.djangoproject.com/en/stable/ref/settings/#databases
 DATABASE = {
-    'NAME': 'status-page',         # Database name
-    'USER': '',               # PostgreSQL username
-    'PASSWORD': '',           # PostgreSQL password
-    'HOST': 'localhost',      # Database server
-    'PORT': '',               # Database port (leave blank for default)
-    'CONN_MAX_AGE': 300,      # Max database connection age
+    'NAME': os.getenv('DATABASE_NAME', 'status-page'),
+    'USER': os.getenv('DATABASE_USER', 'statuspage'),
+    'PASSWORD': os.getenv('DATABASE_PASSWORD', 'password'),
+    'HOST': os.getenv('DATABASE_HOST', 'localhost'),
+    'PORT': os.getenv('DATABASE_PORT', '5432'),
+    'CONN_MAX_AGE': 300,
 }
 
 # Redis database settings. Redis is used for caching and for queuing background tasks. A separate configuration exists
 # for each. Full connection details are required.
 REDIS = {
     'tasks': {
-        'HOST': 'localhost',
-        'PORT': 6379,
-        # Comment out `HOST` and `PORT` lines and uncomment the following if using Redis Sentinel
-        # 'SENTINELS': [('mysentinel.redis.example.com', 6379)],
-        # 'SENTINEL_SERVICE': 'status-page',
-        'PASSWORD': '',
+        'HOST': os.getenv('REDIS_TASKS_HOST', 'localhost'),
+        'PORT': int(os.getenv('REDIS_TASKS_PORT', '6379')),
+        'PASSWORD': os.getenv('REDIS_TASKS_PASSWORD', ''),
         'DATABASE': 0,
         'SSL': False,
-        # Set this to True to skip TLS certificate verification
-        # This can expose the connection to attacks, be careful
-        # 'INSECURE_SKIP_TLS_VERIFY': False,
     },
     'caching': {
-        'HOST': 'localhost',
-        'PORT': 6379,
-        # Comment out `HOST` and `PORT` lines and uncomment the following if using Redis Sentinel
-        # 'SENTINELS': [('mysentinel.redis.example.com', 6379)],
-        # 'SENTINEL_SERVICE': 'netbox',
-        'PASSWORD': '',
+        'HOST': os.getenv('REDIS_CACHING_HOST', 'localhost'),
+        'PORT': int(os.getenv('REDIS_CACHING_PORT', '6379')),
+        'PASSWORD': os.getenv('REDIS_CACHING_PASSWORD', ''),
         'DATABASE': 1,
         'SSL': False,
-        # Set this to True to skip TLS certificate verification
-        # This can expose the connection to attacks, be careful
-        # 'INSECURE_SKIP_TLS_VERIFY': False,
     }
 }
 
 # Define the URL which will be used e.g. in E-Mails
-SITE_URL = ""
+SITE_URL = os.getenv('SITE_URL', '')
 
 # This key is used for secure generation of random numbers and strings. It must never be exposed outside of this file.
 # For optimal security, SECRET_KEY should be at least 50 characters in length and contain a mix of letters, numbers, and
 # symbols. Status-Page will not run without this defined. For more information, see
 # https://docs.djangoproject.com/en/stable/ref/settings/#std:setting-SECRET_KEY
-SECRET_KEY = ''
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 #
 # Optional Settings
@@ -98,18 +92,18 @@ CORS_ORIGIN_REGEX_WHITELIST = [
 # Set to True to enable server debugging. WARNING: Debugging introduces a substantial performance penalty and may reveal
 # sensitive information about your installation. Only enable debugging while performing testing. Never enable debugging
 # on a production system.
-DEBUG = False
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 # Email settings
 EMAIL = {
-    'SERVER': 'localhost',
-    'PORT': 25,
-    'USERNAME': '',
-    'PASSWORD': '',
-    'USE_SSL': False,
-    'USE_TLS': False,
-    'TIMEOUT': 10,  # seconds
-    'FROM_EMAIL': '',
+    'SERVER': os.getenv('EMAIL_SERVER', 'localhost'),
+    'PORT': int(os.getenv('EMAIL_PORT', '25')),
+    'USERNAME': os.getenv('EMAIL_USERNAME', ''),
+    'PASSWORD': os.getenv('EMAIL_PASSWORD', ''),
+    'USE_SSL': os.getenv('EMAIL_USE_SSL', 'False').lower() == 'true',
+    'USE_TLS': os.getenv('EMAIL_USE_TLS', 'False').lower() == 'true',
+    'TIMEOUT': 10,
+    'FROM_EMAIL': os.getenv('EMAIL_FROM_EMAIL', ''),
 }
 
 # IP addresses recognized as internal to the system. The debugging toolbar will be available only to clients accessing
@@ -128,7 +122,7 @@ LOGIN_TIMEOUT = None
 # the default value of this setting is derived from the installed location.
 # MEDIA_ROOT = '/opt/status-page/statuspage/media'
 
-# Overwrite Field Choices for specific Models (Note that this may break functionality!
+# Overwrite Field Choices for specific Models (Note that this may break functionality!)
 # Please check the docs, before overwriting any choices.
 FIELD_CHOICES = {}
 
@@ -141,7 +135,7 @@ PLUGINS = [
 # Each key in the dictionary is the name of an installed plugin and its value is a dictionary of settings.
 PLUGINS_CONFIG = {
     'sp_uptimerobot': {
-        'uptime_robot_api_key': '',
+        'uptime_robot_api_key': os.getenv('UPTIME_ROBOT_API_KEY', ''),
     },
 }
 
