@@ -1,0 +1,85 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: status-page
+      POSTGRES_USER: statuspage
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U statuspage -d status-page"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # יעבור אל configuration.py דרך os.getenv
+      ALLOWED_HOSTS: "localhost,18.212.217.151,"    # אפשר להתחיל גם עם "*,"
+      SITE_URL: "http://18.212.217.151:8000"
+      SECRET_KEY: "CHANGE_ME_IN_PROD"
+      DEBUG: "False"
+
+      DB_NAME: "status-page"
+      DB_USER: "statuspage"
+      DB_PASSWORD: "changeme"
+      DB_HOST: "db"
+
+      REDIS_TASKS_HOST: "redis"
+      REDIS_CACHING_HOST: "redis"
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: .
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_started
+    command: sh -c "cd statuspage && python manage.py rqworker"
+    environment:
+      DB_NAME: "status-page"
+      DB_USER: "statuspage"
+      DB_PASSWORD: "changeme"
+      DB_HOST: "db"
+      REDIS_TASKS_HOST: "redis"
+      REDIS_CACHING_HOST: "redis"
+      SECRET_KEY: "CHANGE_ME_IN_PROD"
+      DEBUG: "False"
+
+  scheduler:
+    build: .
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_started
+    command: sh -c "cd statuspage && python manage.py rqscheduler"
+    environment:
+      DB_NAME: "status-page"
+      DB_USER: "statuspage"
+      DB_PASSWORD: "changeme"
+      DB_HOST: "db"
+      REDIS_TASKS_HOST: "redis"
+      REDIS_CACHING_HOST: "redis"
+      SECRET_KEY: "CHANGE_ME_IN_PROD"
+      DEBUG: "False"
+
+volumes:
+  pgdata:
