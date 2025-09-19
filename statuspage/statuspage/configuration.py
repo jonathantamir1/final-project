@@ -5,10 +5,9 @@ def env_list(name: str, default: str) -> list[str]:
     """Split comma-separated env var into a clean list."""
     return [x.strip() for x in os.getenv(name, default).split(",") if x.strip()]
 
+
 #
 # Required Settings
-#
-
 # Hostnames allowed to access the app (first is preferred). Use commas for multiple.
 # Example: ALLOWED_HOSTS="status.example.com,status.internal"
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "*")
@@ -52,6 +51,7 @@ SITE_URL = os.getenv("SITE_URL", "http://localhost:8000")
 
 # SECRET_KEY must be long and random in production. Prefer passing via env.
 SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_IN_PROD")
+
 
 #
 # Optional Settings
