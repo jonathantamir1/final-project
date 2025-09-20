@@ -15,50 +15,47 @@ pipeline {
             }
         }
 
-        stage('CI - Test & Build') {
-            when {
-                changeRequest() // Only on Pull Requests
-            }
+        // CI: Build and test image (runs on ALL branches including PRs)
+        stage('Build Docker Image') {
             steps {
                 script {
-                    echo "Running CI for Pull Request"
-                    // Build image for testing
-                    def testImage = docker.build("${ECR_REPOSITORY}:test-${BUILD_NUMBER}")
-                    
-                    // Run tests inside the container
-                    testImage.inside {
-                        sh '''
-                            cd statuspage
-                            python manage.py check --deploy
-                            echo "All CI checks passed!"
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('CD - Build for Production') {
-            when {
-                branch 'main' // Only on main branch
-            }
-            steps {
-                script {
-                    echo "Running CD for main branch"
+                    echo "Building Docker image for testing/deployment"
                     docker.build("${ECR_REPOSITORY}:${IMAGE_TAG}")
                 }
             }
         }
 
-        stage('CD - Push to ECR') {
+        // CI: Run tests (runs on ALL branches including PRs)
+        stage('Run Tests') {
+            steps {
+                script {
+                    echo "Running tests and checks"
+                    sh '''
+                        # Test the built image
+                        docker run --rm ${ECR_REPOSITORY}:${IMAGE_TAG} sh -c "cd statuspage && python manage.py check"
+                        echo "All tests passed!"
+                    '''
+                }
+            }
+        }
+
+        // CD: Push to ECR (ONLY on main branch)
+        stage('Push to ECR') {
             when {
                 branch 'main'
             }
             steps {
                 script {
+                    echo "Pushing to ECR - main branch deployment"
                     sh '''
+                        # Login to ECR
                         aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        
+                        # Tag images
                         docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
                         docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+                        
+                        # Push to ECR
                         docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
                         docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
                     '''
@@ -66,38 +63,43 @@ pipeline {
             }
         }
 
-        stage('CD - Deploy') {
+        // CD: Deploy (ONLY on main branch)
+        stage('Deploy to Production') {
             when {
                 branch 'main'
             }
             steps {
                 script {
+                    echo "Deploying to production"
                     sh '''
-                        # Pull the latest image from ECR
-                        docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
-
-                        # Stop and remove existing container if running
+                        # Stop existing container
                         docker stop status-page-app || true
                         docker rm status-page-app || true
 
-                        # Run new container
+                        # Run new container from ECR
                         docker run -d \
                             --name status-page-app \
                             -p 8000:8000 \
+                            --restart unless-stopped \
                             ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+                        
+                        # Verify deployment
+                        sleep 10
+                        docker ps | grep status-page-app
+                        echo "Deployment completed successfully!"
                     '''
                 }
             }
         }
 
+        // Always cleanup local images
         stage('Cleanup') {
             steps {
                 script {
                     sh '''
-                        # Remove local test/build images to save space
+                        # Remove local images to save disk space
                         docker rmi ${ECR_REPOSITORY}:${IMAGE_TAG} || true
-                        docker rmi ${ECR_REPOSITORY}:test-${BUILD_NUMBER} || true
-                        docker rmi ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} || true
+                        docker system prune -f
                     '''
                 }
             }
@@ -106,13 +108,29 @@ pipeline {
 
     post {
         always {
-            cleanWs()
+            script {
+                // Always cleanup workspace and Docker
+                sh 'docker system prune -f || true'
+                cleanWs()
+            }
         }
         success {
-            echo 'Pipeline succeeded!'
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    echo 'CD Pipeline succeeded! Application deployed to production.'
+                } else {
+                    echo 'CI Pipeline succeeded! Code is ready for merge.'
+                }
+            }
         }
         failure {
-            echo 'Pipeline failed!'
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    echo 'CD Pipeline failed! Production deployment unsuccessful.'
+                } else {
+                    echo 'CI Pipeline failed! Please fix issues before merging.'
+                }
+            }
         }
     }
 }
