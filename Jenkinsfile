@@ -15,31 +15,48 @@ pipeline {
             }
         }
 
-
+        // CI: Build and test image (runs on ALL branches including PRs)
         stage('Build Docker Image') {
             steps {
                 script {
+                    echo "Building Docker image for testing/deployment"
                     docker.build("${ECR_REPOSITORY}:${IMAGE_TAG}")
                 }
             }
         }
 
-        stage('Login to ECR') {
+        // CI: Run tests (runs on ALL branches including PRs)
+        stage('Run Tests') {
             steps {
                 script {
+                    echo "Running tests and checks"
                     sh '''
-                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        # Simple test - verify Docker image was built correctly
+                        docker run --rm ${ECR_REPOSITORY}:${IMAGE_TAG} python --version
+                        docker run --rm ${ECR_REPOSITORY}:${IMAGE_TAG} ls -la /app
+                        echo "Docker image validation passed!"
                     '''
                 }
             }
         }
 
-        stage('Tag and Push to ECR') {
+        // CD: Push to ECR (ONLY on main branch)
+        stage('Push to ECR') {
+            when {
+                branch 'main'
+            }
             steps {
                 script {
+                    echo "Pushing to ECR - main branch deployment"
                     sh '''
+                        # Login to ECR
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        
+                        # Tag images
                         docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
                         docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+                        
+                        # Push to ECR
                         docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
                         docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
                     '''
@@ -47,34 +64,43 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        // CD: Deploy (ONLY on main branch)
+        stage('Deploy to Production') {
+            when {
+                branch 'main'
+            }
             steps {
                 script {
+                    echo "Deploying to production"
                     sh '''
-                        # Pull the latest image from ECR
-                        docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
-
-                        # Stop and remove existing container if running
+                        # Stop existing container
                         docker stop status-page-app || true
                         docker rm status-page-app || true
 
-                        # Run new container
+                        # Run new container from ECR
                         docker run -d \
                             --name status-page-app \
                             -p 8000:8000 \
+                            --restart unless-stopped \
                             ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+                        
+                        # Verify deployment
+                        sleep 10
+                        docker ps | grep status-page-app
+                        echo "Deployment completed successfully!"
                     '''
                 }
             }
         }
 
+        // Always cleanup local images
         stage('Cleanup') {
             steps {
                 script {
                     sh '''
-                        # Remove local images to save space
+                        # Remove local images to save disk space
                         docker rmi ${ECR_REPOSITORY}:${IMAGE_TAG} || true
-                        docker rmi ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} || true
+                        docker system prune -f
                     '''
                 }
             }
@@ -83,13 +109,29 @@ pipeline {
 
     post {
         always {
-            cleanWs()
+            script {
+                // Always cleanup workspace and Docker
+                sh 'docker system prune -f || true'
+                cleanWs()
+            }
         }
         success {
-            echo 'Pipeline succeeded!'
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    echo 'CD Pipeline succeeded! Application deployed to production.'
+                } else {
+                    echo 'CI Pipeline succeeded! Code is ready for merge.'
+                }
+            }
         }
         failure {
-            echo 'Pipeline failed!'
+            script {
+                if (env.BRANCH_NAME == 'main') {
+                    echo 'CD Pipeline failed! Production deployment unsuccessful.'
+                } else {
+                    echo 'CI Pipeline failed! Please fix issues before merging.'
+                }
+            }
         }
     }
 }
