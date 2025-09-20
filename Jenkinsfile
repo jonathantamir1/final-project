@@ -3,10 +3,9 @@ pipeline {
 
     environment {
         AWS_DEFAULT_REGION = 'us-east-1'
-        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
-        ECR_REPOSITORY = 'status-page'
+        ECR_REGISTRY = "992382545251.dkr.ecr.us-east-1.amazonaws.com"
+        ECR_REPOSITORY = 'status-page-aaj-ecr'
         IMAGE_TAG = "${BUILD_NUMBER}"
-        AWS_ACCOUNT_ID = credentials('aws-account-id')
     }
 
     stages {
