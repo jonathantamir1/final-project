@@ -15,29 +15,48 @@ pipeline {
             }
         }
 
-
-        stage('Build Docker Image') {
+        stage('CI - Test & Build') {
+            when {
+                changeRequest() // Only on Pull Requests
+            }
             steps {
                 script {
+                    echo "Running CI for Pull Request"
+                    // Build image for testing
+                    def testImage = docker.build("${ECR_REPOSITORY}:test-${BUILD_NUMBER}")
+                    
+                    // Run tests inside the container
+                    testImage.inside {
+                        sh '''
+                            cd statuspage
+                            python manage.py check --deploy
+                            echo "All CI checks passed!"
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('CD - Build for Production') {
+            when {
+                branch 'main' // Only on main branch
+            }
+            steps {
+                script {
+                    echo "Running CD for main branch"
                     docker.build("${ECR_REPOSITORY}:${IMAGE_TAG}")
                 }
             }
         }
 
-        stage('Login to ECR') {
+        stage('CD - Push to ECR') {
+            when {
+                branch 'main'
+            }
             steps {
                 script {
                     sh '''
                         aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                    '''
-                }
-            }
-        }
-
-        stage('Tag and Push to ECR') {
-            steps {
-                script {
-                    sh '''
                         docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
                         docker tag ${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
                         docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
@@ -47,7 +66,10 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        stage('CD - Deploy') {
+            when {
+                branch 'main'
+            }
             steps {
                 script {
                     sh '''
@@ -72,8 +94,9 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        # Remove local images to save space
+                        # Remove local test/build images to save space
                         docker rmi ${ECR_REPOSITORY}:${IMAGE_TAG} || true
+                        docker rmi ${ECR_REPOSITORY}:test-${BUILD_NUMBER} || true
                         docker rmi ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} || true
                     '''
                 }
